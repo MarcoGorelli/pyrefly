@@ -859,26 +859,31 @@ impl ConfigFile {
             root: ConfigBase::default_for_ide_without_config(),
             ..Default::default()
         };
-        let import_root = layout.get_import_root(root);
         if fallback {
             // De-prioritize guessed import roots, so they don't shadow typeshed. In particular,
             // we don't want the typing-extensions package to shadow the corresponding stub.
-            result.fallback_search_path = FallbackSearchPath::Explicit(Arc::new(vec![import_root]));
+            result.fallback_search_path =
+                FallbackSearchPath::Explicit(Arc::new(vec![layout.get_import_root(root)]));
         } else {
-            result.import_root = Some(import_root);
-            if matches!(layout, ProjectLayout::Src) {
-                // Pytest projects commonly keep importable test modules beside `src/`.
-                // Keep the project root lower precedence so modules under `src/` retain their
-                // canonical names.
-                result.fallback_search_path =
-                    FallbackSearchPath::Explicit(Arc::new(vec![root.to_path_buf()]));
-            }
+            result.set_import_root_from_layout(root, layout);
         }
         // ignore failures rewriting path to config, since we're trying to construct
         // an ephemeral config for the user, and it's not fatal (but things might be
         // a little weird)
         result.rewrite_with_path_to_config(root);
         result
+    }
+
+    /// Set the import root inferred from `layout` for a project rooted at `root`.
+    fn set_import_root_from_layout(&mut self, root: &Path, layout: &ProjectLayout) {
+        self.import_root = Some(layout.get_import_root(root));
+        if matches!(layout, ProjectLayout::Src) {
+            // Pytest projects commonly keep importable test modules beside `src/`.
+            // Keep the project root lower precedence so modules under `src/` retain their
+            // canonical names.
+            self.fallback_search_path =
+                FallbackSearchPath::Explicit(Arc::new(vec![root.to_path_buf()]));
+        }
     }
 
     /// Get the project excludes, properly excluding site packages and required excludes.
@@ -1959,13 +1964,17 @@ impl ConfigFile {
         // Honor `enable-fallback-search-path`: populate
         // `fallback_search_path` with a `DirectoryRelative` walk bounded by
         // the config root. The two guard conditions enforce non-clobber and
-        // skip-synthetic invariants — `matches!(_, Empty)` so we don't
+        // skip-synthetic invariants — the `DirectoryRelative` check so we don't
         // overwrite the build-system path's `DirectoryRelative` set above,
         // and `source.root_from_file().is_some()` so we skip the `Synthetic`
         // case that `init_at_root(fallback = true)` already handles with
-        // `Explicit` paths.
+        // `Explicit` paths. Replacing the `Explicit` project root that a `src/`
+        // layout sets loses nothing, since the walk ends at the config root.
         if self.enable_fallback_search_path
-            && matches!(self.fallback_search_path, FallbackSearchPath::Empty)
+            && !matches!(
+                self.fallback_search_path,
+                FallbackSearchPath::DirectoryRelative(_)
+            )
             && let Some(config_root) = self.source.root_from_file()
         {
             self.fallback_search_path = FallbackSearchPath::DirectoryRelative(
@@ -2089,7 +2098,7 @@ impl ConfigFile {
                     let layout = ProjectLayout::new(config_root);
                     if let Some(mut config) = maybe_config {
                         config.rewrite_with_path_to_config(config_root);
-                        config.import_root = Some(layout.get_import_root(config_root));
+                        config.set_import_root_from_layout(config_root, &layout);
                         config
                     } else {
                         ConfigFile::init_at_root(config_root, &layout, false)
@@ -4587,12 +4596,14 @@ output-format = "omit-errors"
         // root/
         // - pyrefly.toml
         // - src/
+        // - tests/
         let root = TempDir::new().unwrap();
         let src_dir = root.path().join("src");
         fs::create_dir_all(&src_dir).unwrap();
+        fs::create_dir_all(root.path().join("tests")).unwrap();
         let pyrefly_path = root.path().join(ConfigFile::PYREFLY_FILE_NAME);
         fs::write(&pyrefly_path, "project_includes = [\"**/*\"]").unwrap();
-        let config = ConfigFile::from_file(&pyrefly_path).0;
+        let mut config = ConfigFile::from_file(&pyrefly_path).0;
         // File contents should still be relative to the location of the config file, not src/.
         assert_eq!(
             config.project_includes,
@@ -4602,7 +4613,20 @@ output-format = "omit-errors"
             config.search_path().cloned().collect::<Vec<_>>(),
             vec![src_dir]
         );
-        assert_eq!(config.fallback_search_path, FallbackSearchPath::Empty);
+        assert_eq!(
+            config.fallback_search_path,
+            FallbackSearchPath::Explicit(Arc::new(vec![root.path().to_path_buf()])),
+        );
+
+        // A test module outside `src/` is named from the project root, so that relative
+        // imports within `tests/` resolve.
+        config.interpreters.skip_interpreter_query = true;
+        config.configure();
+        let test = config.handle_from_module_path(ModulePath::filesystem(
+            root.path().join("tests/sub/test_a.py"),
+        ));
+        assert_eq!(test.module(), ModuleName::from_str("tests.sub.test_a"));
+        assert!(test.is_fallback());
     }
 
     #[test]

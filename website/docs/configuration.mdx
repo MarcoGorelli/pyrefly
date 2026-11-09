@@ -340,10 +340,10 @@ The three heuristics that are currently supported are:
    or files can be found.
    See [Configuration Finding](#configuration-finding) for more information on
    what we'll find as a config file.
-2. If no Pyrefly config is present and a `src/` layout is inferred, adding the
-   project root as a lower-precedence fallback path. This lets modules under a
-   sibling `tests/` directory import each other without changing the canonical
-   names of modules under `src/`.
+2. If the import root is a `src/` directory, adding the project root as a
+   lower-precedence fallback path. This lets modules under a sibling `tests/`
+   directory import each other, including through relative imports, without
+   changing the canonical names of modules under `src/`.
 3. If no project root can be inferred, each directory from the given file to `/`
    will be added as a fallback search path.
 

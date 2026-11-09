@@ -73,10 +73,10 @@ The import root is:
 ### Fallback Search Path
 
 The fallback search path is a lower-precedence heuristic automatically constructed by
-Pyrefly when no Pyrefly config defines the project's import roots. For an inferred
-`src/` layout, it includes the project root so sibling directories such as `tests/`
-are importable without changing the primary `src/` import root. When Pyrefly cannot
-infer a project root, it instead searches the importing file's ancestors.
+Pyrefly. When the import root is a `src/` directory, it includes the project root so
+sibling directories such as `tests/` are importable without changing the primary `src/`
+import root. When Pyrefly cannot infer a project root, it instead searches the importing
+file's ancestors.
 It is only constructed when
 [`disable-search-path-heuristics`](configuration.mdx#disable-search-path-heuristics)
 is not set.

@@ -111,6 +111,27 @@ Docs: * (glob)
 [0]
 ```
 
+## Src layout with a Pyrefly config and relative test imports
+
+An explicit config with a `src/` layout should also name modules under a sibling
+`tests/` directory from the project root, so that relative imports between them
+resolve.
+
+```scrut {output_stream: stderr}
+$ mkdir -p $TMPDIR/configured_src/src/mypkg $TMPDIR/configured_src/tests/sub && \
+> printf '[tool.pyrefly]\nproject-includes = ["src", "tests"]\n' \
+>     > $TMPDIR/configured_src/pyproject.toml && \
+> touch $TMPDIR/configured_src/src/mypkg/__init__.py && \
+> touch $TMPDIR/configured_src/tests/__init__.py $TMPDIR/configured_src/tests/sub/__init__.py && \
+> echo "X: int = 1" > $TMPDIR/configured_src/tests/sub/helpers.py && \
+> echo "from .helpers import X" > $TMPDIR/configured_src/tests/sub/test_a.py && \
+> echo "from .sub.helpers import X" > $TMPDIR/configured_src/tests/test_b.py && \
+> cd $TMPDIR/configured_src && $PYREFLY check
+ INFO Checking project configured at `*/pyproject.toml` (glob)
+ INFO 0 errors
+[0]
+```
+
 ## Relative --project-excludes
 
 ```scrut {output_stream: stderr}
