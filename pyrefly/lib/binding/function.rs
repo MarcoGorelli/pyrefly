@@ -680,10 +680,21 @@ impl<'a> BindingsBuilder<'a> {
             } else {
                 None
             };
+        // Python rejects the syntax errors below when compiling, even in unreachable code.
         // Collect the keys of explicit returns.
         let return_keys = yields_and_returns
             .returns
             .into_map(|(idx, x, is_unreachable)| {
+                if is_async
+                    && is_generator
+                    && let Some(value) = &x.value
+                {
+                    self.error(
+                        value.range(),
+                        ErrorKind::BadReturn,
+                        "Return statement with value is not allowed in async generator".to_owned(),
+                    );
+                }
                 self.insert_binding_idx(
                     idx,
                     Binding::ReturnExplicit(ReturnExplicit {
@@ -715,6 +726,13 @@ impl<'a> BindingsBuilder<'a> {
         let yield_from_keys = yields_and_returns
             .yield_froms
             .into_map(|(idx, x, is_unreachable)| {
+                if is_async {
+                    self.error(
+                        x.range,
+                        ErrorKind::InvalidYield,
+                        "Invalid `yield from` in async function".to_owned(),
+                    );
+                }
                 self.insert_binding_idx(
                     idx,
                     if is_unreachable {

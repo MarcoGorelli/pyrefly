@@ -363,6 +363,21 @@ async def g() -> AsyncGenerator[int, None]:
 "#,
 );
 
+// Python rejects these when compiling, so they are errors even in unreachable code.
+testcase!(
+    test_async_generator_syntax_errors_in_unreachable_code,
+    r#"
+async def return_value():
+    yield 1
+    return
+    return 42  # E: This code is unreachable  # E: Return statement with value is not allowed in async generator
+
+async def yield_from():
+    return
+    yield from [1]  # E: Invalid `yield from` in async function
+"#,
+);
+
 testcase!(
     test_missing_return,
     r#"

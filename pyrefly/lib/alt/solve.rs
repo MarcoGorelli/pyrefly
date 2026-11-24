@@ -5010,12 +5010,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         } else if x.is_async && x.is_generator {
             if let Some(expr) = &x.expr {
                 self.expr_infer(expr, errors);
-                self.error(
-                    errors,
-                    expr.range(),
-                    ErrorKind::BadReturn,
-                    "Return statement with value is not allowed in async generator".to_owned(),
-                )
+                self.heap.mk_any_error()
             } else {
                 self.heap.mk_none()
             }
@@ -7870,15 +7865,6 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     ) -> YieldFromResult {
         match x {
             BindingYieldFrom::YieldFrom(annot, is_async, x) => {
-                if is_async.is_async() {
-                    self.error(
-                        errors,
-                        x.range,
-                        ErrorKind::InvalidYield,
-                        "Invalid `yield from` in async function".to_owned(),
-                    );
-                }
-
                 let mut ty = self.expr_infer(&x.value, errors);
                 let res = if let Some(generator) = self.unwrap_generator(&ty) {
                     YieldFromResult::from_generator(generator)
@@ -7899,7 +7885,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     YieldFromResult::from_iterable(self.heap, yield_ty)
                 } else {
                     ty = if is_async.is_async() {
-                        // We already errored above.
+                        // The binder reports a `yield from` in an async function.
                         self.heap.mk_any_error()
                     } else {
                         self.error(
